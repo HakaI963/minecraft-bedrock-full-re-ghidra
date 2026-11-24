@@ -96,21 +96,6 @@ jobs:
           tar --zstd -cf bundle/ghidra-fast.tar.zst -C out ghidra
           gh release upload "$TAG_RESULT" bundle/ghidra-fast.tar.zst --repo "${{ github.repository }}" --clobber || true
 
-      - name: Ghidra full auto-analysis (best effort, bounded)
-        continue-on-error: true
-        run: bash scripts/run_ghidra.sh "$GHIDRA_DIR" ghidra_project "$LIB" out/ghidra_full scripts 12000
-        timeout-minutes: 200
-
-      - name: Publish Ghidra full auto-analysis result
-        if: always()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          if [ -d out/ghidra_full ] && [ -n "$(ls -A out/ghidra_full 2>/dev/null)" ]; then
-            tar --zstd -cf bundle/ghidra-full.tar.zst -C out ghidra_full
-            gh release upload "$TAG_RESULT" bundle/ghidra-full.tar.zst --repo "${{ github.repository }}" --clobber || true
-          fi
-
       - name: Free Ghidra project disk space
         if: always()
         run: rm -rf ghidra_project
@@ -143,4 +128,19 @@ jobs:
             gh release upload "$TAG_RESULT" "$f" --repo "${{ github.repository }}" --clobber || true
           done
           gh release view "$TAG_RESULT" --repo "${{ github.repository }}" --json assets --jq '.assets[].name'
+
+      - name: Ghidra full auto-analysis (best effort, last)
+        continue-on-error: true
+        run: bash scripts/run_ghidra.sh "$GHIDRA_DIR" ghidra_project "$LIB" out/ghidra_full scripts 2700
+        timeout-minutes: 45
+
+      - name: Publish Ghidra full auto-analysis result
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -d out/ghidra_full ] && [ -n "$(ls -A out/ghidra_full 2>/dev/null)" ]; then
+            tar --zstd -cf bundle/ghidra-full.tar.zst -C out ghidra_full
+            gh release upload "$TAG_RESULT" bundle/ghidra-full.tar.zst --repo "${{ github.repository }}" --clobber || true
+          fi
 
