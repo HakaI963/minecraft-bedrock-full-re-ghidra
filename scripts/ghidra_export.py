@@ -10,13 +10,14 @@ args = getScriptArgs()
 OUT = args[0] if len(args) > 0 else 'out'
 BUDGET = int(args[1]) if len(args) > 1 else 9600
 START = time.time()
-os.makedirs(OUT)
+if not os.path.isdir(OUT): os.makedirs(OUT)
 
 def w(name, lines):
     p = os.path.join(OUT, name)
-    with open(p, 'w') as f:
+    with open(p, 'wb') as f:
         for l in lines:
-            f.write(unicode(l).encode('utf-8', 'replace') if False else (l if isinstance(l, unicode) else unicode(l)))
+            s = l if isinstance(l, unicode) else unicode(l)
+            f.write(s.encode('utf-8', 'replace'))
             f.write('\n')
     print('[export]', name, len(lines))
 
@@ -124,7 +125,7 @@ w('05_defined_strings.tsv', defined_strings)
 # ---------- full decompilation of every function ----------
 dec = DecompInterface()
 dec.openProgram(prog)
-os.makedirs(os.path.join(OUT, 'decompiled'))
+if not os.path.isdir(os.path.join(OUT, 'decompiled')): os.makedirs(os.path.join(OUT, 'decompiled'))
 CHUNK = 2000
 chunks = []
 cur = []

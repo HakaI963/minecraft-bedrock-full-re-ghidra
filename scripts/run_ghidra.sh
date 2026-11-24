@@ -9,5 +9,4 @@ echo "[run_ghidra] Ghidra=$GHIDRA_DIR lib=$LIB budget=${BUDGET}s"
   -import "$LIB" \
   -scriptPath "$SCRIPTDIR" \
   -postScript ghidra_export.py "$OUT/ghidra" "$BUDGET" \
-  -analysisTimeoutPerFile 0 \
   2>&1 | tee "$OUT/ghidra/ghidra_console.log"
