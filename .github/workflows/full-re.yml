@@ -83,9 +83,33 @@ jobs:
           gh release upload "$TAG_RESULT" bundle/elf-fasttrack.tar.zst --repo "${{ github.repository }}" --clobber || true
           ls -lh bundle
 
-      - name: Ghidra full auto-analysis and export
-        run: bash scripts/run_ghidra.sh "$GHIDRA_DIR" ghidra_project "$LIB" out scripts 9600
-        timeout-minutes: 300
+      - name: Ghidra guaranteed export (symbols, offsets, signatures, decompilation)
+        run: bash scripts/run_ghidra_fast.sh "$GHIDRA_DIR" ghidra_project_fast "$LIB" out scripts 1800
+        timeout-minutes: 45
+
+      - name: Publish Ghidra guaranteed export
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p bundle out/ghidra
+          tar --zstd -cf bundle/ghidra-fast.tar.zst -C out ghidra
+          gh release upload "$TAG_RESULT" bundle/ghidra-fast.tar.zst --repo "${{ github.repository }}" --clobber || true
+
+      - name: Ghidra full auto-analysis (best effort, bounded)
+        continue-on-error: true
+        run: bash scripts/run_ghidra.sh "$GHIDRA_DIR" ghidra_project "$LIB" out/ghidra_full scripts 12000
+        timeout-minutes: 200
+
+      - name: Publish Ghidra full auto-analysis result
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -d out/ghidra_full ] && [ -n "$(ls -A out/ghidra_full 2>/dev/null)" ]; then
+            tar --zstd -cf bundle/ghidra-full.tar.zst -C out ghidra_full
+            gh release upload "$TAG_RESULT" bundle/ghidra-full.tar.zst --repo "${{ github.repository }}" --clobber || true
+          fi
 
       - name: Free Ghidra project disk space
         if: always()
@@ -93,14 +117,16 @@ jobs:
 
       - name: Categorise everything (blocks, items, world, menus, ...)
         if: always()
-        run: python3 scripts/categorize.py out
+        run: |
+          python3 scripts/categorize.py out || true
+          python3 scripts/categorize_elf.py out/elf out/categories_elf || true
 
       - name: Commit generated documentation
         if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f docs/generated out/INDEX.md out/categories 2>/dev/null || true
+          git add -f docs/generated out/INDEX.md out/categories out/categories_elf 2>/dev/null || true
           git commit -m "chore: add generated reverse-engineering categorisation" || true
           git push || true
 
@@ -111,7 +137,7 @@ jobs:
         run: |
           mkdir -p bundle
           tar --zstd -cf bundle/ghidra-exports.tar.zst -C out \
-            ghidra 2>/dev/null || true
+            ghidra ghidra_full 2>/dev/null || true
           for f in bundle/*.zst; do
             [ -f "$f" ] || continue
             gh release upload "$TAG_RESULT" "$f" --repo "${{ github.repository }}" --clobber || true
