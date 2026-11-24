@@ -2,14 +2,25 @@ import re, sys, bisect
 lib, sections_file, strings_file, out = sys.argv[1:5]
 secs = []
 lines = open(sections_file, errors='replace').read().splitlines()
-for i, line in enumerate(lines):
-    m = re.search(r'\[\s*\d+\]\s+(\S+)\s+(\S+)\s+([0-9a-fA-F]+)\s+([0-9a-fA-F]+)', line)
+for line in lines:
+    m = re.match(r'^\s*\[\s*(\d+)\]\s+(.*)$', line)
     if not m:
         continue
-    name, typ, addr, off = m.group(1), m.group(2), int(m.group(3), 16), int(m.group(4), 16)
+    p = m.group(2).split()
+    if len(p) < 5:
+        continue
+    name, typ = p[0], p[1]
+    if re.fullmatch(r'[0-9a-fA-F]+', typ):   # section 0 (NULL) has no type column
+        continue
+    try:
+        addr, off = int(p[2], 16), int(p[3], 16)
+    except ValueError:
+        continue
     size = 0
-    if i + 1 < len(lines):
-        m2 = re.match(r'\s+([0-9a-fA-F]+)\s', lines[i + 1])
+    if len(p) >= 5 and re.fullmatch(r'[0-9a-fA-F]+', p[4]):
+        size = int(p[4], 16)
+    elif lines.index(line) + 1 < len(lines):
+        m2 = re.match(r'\s*([0-9a-fA-F]+)\s', lines[lines.index(line) + 1])
         if m2:
             size = int(m2.group(1), 16)
     if size:

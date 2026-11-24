@@ -18,5 +18,6 @@ objdump -f -p "$LIB" > objdump_private.txt || true
 nm -D --defined-only "$LIB" > nm_dynamic_defined.txt || true
 strings -a -t d "$LIB" > strings_offsets.txt
 python3 "$SCRIPTDIR/map_offsets.py" "$LIB" sections.txt strings_offsets.txt strings_mapped.tsv
-objdump -d -C --no-show-raw-insn "$LIB" | zstd -q -T4 -3 -o disassembly.txt.zst
+objdump -d -C --no-show-raw-insn -b elf64-littleaarch64 -m aarch64 "$LIB" \
+  | zstd -q -T4 -3 -o disassembly.txt.zst || echo "disassembly unavailable" > disassembly_status.txt
 ls -lh
