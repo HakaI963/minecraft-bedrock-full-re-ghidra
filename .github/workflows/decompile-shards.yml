@@ -1,0 +1,72 @@
+name: Full decompilation - all Minecraft Bedrock functions (8 shards)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: decompile-shards
+  cancel-in-progress: false
+
+jobs:
+  shard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        shard: [0,1,2,3,4,5,6,7]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '21' }
+      - name: Tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq zstd unzip
+      - name: Get payload
+        env: GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p payload work
+          gh release download native-payload --repo "${{ github.repository }}" --dir payload --clobber
+          tar --zstd -xf payload/native-libs.tar.zst -C work
+      - name: Get Ghidra
+        env: GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download Ghidra_11.2.1_build --repo NationalSecurityAgency/ghidra --pattern 'ghidra_11.2.1_PUBLIC_*.zip' --dir dl --clobber
+          unzip -q dl/ghidra_*.zip -d gh
+          echo "GHIDRA_DIR=$(find "$PWD/gh" -mindepth 1 -maxdepth 1 -type d -name 'ghidra_*'|head -1)" >> "$GITHUB_ENV"
+      - name: Decompile shard ${{ matrix.shard }}
+        run: |
+          mkdir -p out/decomp shard_${{ matrix.shard }}
+          START=$(( ${{ matrix.shard }} * 10000 ))
+          export MAXMEM=8192
+          ("$GHIDRA_DIR/support/analyzeHeadless" shard_${{ matrix.shard }} mcpe \
+            -import "$(pwd)/work/libminecraftpe.so" -noanalysis -scriptPath scripts \
+            -postScript ghidra_decompile_shard.py "$(pwd)/out/decomp" "$START" 10000 17000 2>&1 || true) \
+            | grep -aE '^\[shard\]|ERROR|Exception' | tail -300 | tee out/shard.log
+      - name: Upload shard
+        if: always()
+        env: GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tar --zstd -cf shard_${{ matrix.shard }}.tar.zst -C out decomp shard.log 2>/dev/null || true
+          gh release upload re-result shard_${{ matrix.shard }}.tar.zst --repo "${{ github.repository }}" --clobber || true
+
+  merge:
+    needs: shard
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Merge shards
+        env: GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p merged
+          for i in 0 1 2 3 4 5 6 7; do
+            gh release download re-result --repo "${{ github.repository }}" --pattern "shard_${i}.tar.zst" --dir shards --clobber || true
+            [ -f shards/shard_${i}.tar.zst ] && tar --zstd -xf shards/shard_${i}.tar.zst -C merged || true
+          done
+          find merged -type f | wc -l
+          tar --zstd -cf decompiled-full.tar.zst -C merged .
+          gh release upload re-result decompiled-full.tar.zst --repo "${{ github.repository }}" --clobber || true
