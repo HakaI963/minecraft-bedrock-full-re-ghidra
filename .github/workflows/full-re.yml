@@ -1,0 +1,129 @@
+name: Full Ghidra reverse engineering - Minecraft Bedrock arm64
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: full-re
+  cancel-in-progress: false
+
+jobs:
+  reverse:
+    name: Ghidra full analysis + export + categorise
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      TAG_NATIVE: native-payload
+      TAG_RESULT: re-result
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Java 21 (Ghidra 11.x requirement)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install binary utilities
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq binutils zstd file coreutils
+
+      - name: Add swap so large Ghidra heaps do not get OOM-killed
+        run: |
+          sudo fallocate -l 8G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile >/dev/null
+          sudo swapon /swapfile
+          free -h
+
+      - name: Download uploaded native payload from release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p payload work out
+          gh release download "$TAG_NATIVE" --repo "${{ github.repository }}" --dir payload --clobber
+          ls -lh payload
+
+      - name: Unpack native payload
+        run: |
+          tar --zstd -xf payload/native-libs.tar.zst -C work
+          find work -type f -printf '%p %s bytes\n'
+          echo "LIB=$(find work -name 'libminecraftpe.so' | head -1)" >> "$GITHUB_ENV"
+
+      - name: Download Ghidra (latest public release)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download --repo NationalSecurityAgency/ghidra \
+            --pattern 'ghidra_*_PUBLIC_*.zip' --dir ghidra_dl --clobber
+          unzip -q ghidra_dl/ghidra_*.zip -d ghidra_home
+          echo "GHIDRA_DIR=$(find "$PWD/ghidra_home" -maxdepth 1 -type d -name 'ghidra_*' | head -1)" >> "$GITHUB_ENV"
+
+      - name: ELF fast-track (all offsets, symbols, strings, disassembly)
+        run: bash scripts/elf_extract.sh "$LIB" out scripts
+        timeout-minutes: 150
+
+      - name: Publish ELF fast-track results early
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          zstd -q -r -T4 -3 out/elf || true
+          gh release view "$TAG_RESULT" --repo "${{ github.repository }}" >/dev/null 2>&1 || \
+            gh release create "$TAG_RESULT" --repo "${{ github.repository }}" --title "Reverse engineering results" --notes "Automated Ghidra + ELF export" --target "$GITHUB_SHA"
+          for f in $(find out/elf -type f -name '*.zst'); do
+            gh release upload "$TAG_RESULT" "$f" --repo "${{ github.repository }}" --clobber || true
+          done
+
+      - name: Ghidra full auto-analysis and export
+        run: bash scripts/run_ghidra.sh "$GHIDRA_DIR" ghidra_project "$LIB" out scripts 9600
+        timeout-minutes: 300
+
+      - name: Free Ghidra project disk space
+        if: always()
+        run: rm -rf ghidra_project
+
+      - name: Categorise everything (blocks, items, world, menus, ...)
+        if: always()
+        run: python3 scripts/categorize.py out
+
+      - name: Commit generated documentation
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f docs/generated out/INDEX.md out/categories 2>/dev/null || true
+          git commit -m "chore: add generated reverse-engineering categorisation" || true
+          git push || true
+
+      - name: Package and publish all Ghidra exports
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p bundle
+          tar --zstd -cf bundle/ghidra-exports.tar.zst -C out \
+            ghidra 2>/dev/null || true
+          for f in bundle/*.zst; do
+            [ -f "$f" ] || continue
+            gh release upload "$TAG_RESULT" "$f" --repo "${{ github.repository }}" --clobber || true
+          done
+          gh release view "$TAG_RESULT" --repo "${{ github.repository }}" --json assets --jq '.assets[].name'
+
+      - name: Upload small docs as workflow artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: re-docs
+          path: |
+            out/INDEX.md
+            out/categories/**
+            out/ghidra/ghidra_export.log

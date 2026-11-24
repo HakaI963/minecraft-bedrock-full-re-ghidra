@@ -1,0 +1,12 @@
+native/
+payload/
+work/
+ghidra_dl/
+ghidra_home/
+ghidra_project/
+out/
+bundle/
+*.zst
+*.tar.zst
+*.apk
+*.so
