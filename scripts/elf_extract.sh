@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-LIB="$1"; OUT="$2"; SCRIPTDIR="$3"
+LIB=$(realpath "$1"); OUT=$(realpath -m "$2"); SCRIPTDIR=$(realpath "$3")
 mkdir -p "$OUT/elf"
 cd "$OUT/elf"
 sha256sum "$LIB" > sha256.txt
