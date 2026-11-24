@@ -38,10 +38,10 @@ jobs:
 
       - name: Add swap so large Ghidra heaps do not get OOM-killed
         run: |
-          sudo fallocate -l 8G /swapfile
-          sudo chmod 600 /swapfile
-          sudo mkswap /swapfile >/dev/null
-          sudo swapon /swapfile
+          sudo fallocate -l 8G /swapfile-re
+          sudo chmod 600 /swapfile-re
+          sudo mkswap /swapfile-re >/dev/null
+          sudo swapon /swapfile-re
           free -h
 
       - name: Download uploaded native payload from release
@@ -76,7 +76,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mkdir -p bundle
+          mkdir -p bundle out/elf
           tar --zstd -cf bundle/elf-fasttrack.tar.zst -C out elf
           gh release view "$TAG_RESULT" --repo "${{ github.repository }}" >/dev/null 2>&1 || \
             gh release create "$TAG_RESULT" --repo "${{ github.repository }}" --title "Reverse engineering results" --notes "Automated Ghidra + ELF export" --target "$GITHUB_SHA"
@@ -118,12 +118,3 @@ jobs:
           done
           gh release view "$TAG_RESULT" --repo "${{ github.repository }}" --json assets --jq '.assets[].name'
 
-      - name: Upload small docs as workflow artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: re-docs
-          path: |
-            out/INDEX.md
-            out/categories/**
-            out/ghidra/ghidra_export.log
