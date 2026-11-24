@@ -106,18 +106,12 @@ try:
         pass
 except Exception:
     pass
-try:
-    from ghidra.program.model.data import StringDataType
-    for addr in prog.getMemory().getBlocks():
-        pass
-except Exception:
-    pass
 # Ghidra's defined strings from the listing
 defined_strings = ['address\tvaddr\tlength\tstring']
 try:
     for d in prog.getListing().getDefinedData(True):
         try:
-            if d.getDataType().getName().lower().find('string') >= 0 or d.getDataType() instanceof StringDataType:
+            if d.getDataType().getName().lower().find('string') >= 0:
                 defined_strings.append('%s\t%s\t%d\t%s' % (d.getAddress(), d.getAddress(), d.getLength(),
                                                            str(d.getDefaultValueRepresentation()).replace('\t', ' ')))
         except Exception:

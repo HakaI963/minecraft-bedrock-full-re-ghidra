@@ -62,8 +62,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release download --repo NationalSecurityAgency/ghidra \
-            --pattern 'ghidra_*_PUBLIC_*.zip' --dir ghidra_dl --clobber
+          gh release download Ghidra_11.2.1_build --repo NationalSecurityAgency/ghidra \
+            --pattern 'ghidra_11.2.1_PUBLIC_*.zip' --dir ghidra_dl --clobber
           unzip -q ghidra_dl/ghidra_*.zip -d ghidra_home
           echo "GHIDRA_DIR=$(find "$PWD/ghidra_home" -maxdepth 1 -type d -name 'ghidra_*' | head -1)" >> "$GITHUB_ENV"
 
@@ -76,12 +76,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          zstd -q -r -T4 -3 out/elf || true
+          mkdir -p bundle
+          tar --zstd -cf bundle/elf-fasttrack.tar.zst -C out elf
           gh release view "$TAG_RESULT" --repo "${{ github.repository }}" >/dev/null 2>&1 || \
             gh release create "$TAG_RESULT" --repo "${{ github.repository }}" --title "Reverse engineering results" --notes "Automated Ghidra + ELF export" --target "$GITHUB_SHA"
-          for f in $(find out/elf -type f -name '*.zst'); do
-            gh release upload "$TAG_RESULT" "$f" --repo "${{ github.repository }}" --clobber || true
-          done
+          gh release upload "$TAG_RESULT" bundle/elf-fasttrack.tar.zst --repo "${{ github.repository }}" --clobber || true
+          ls -lh bundle
 
       - name: Ghidra full auto-analysis and export
         run: bash scripts/run_ghidra.sh "$GHIDRA_DIR" ghidra_project "$LIB" out scripts 9600
