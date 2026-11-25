@@ -52,6 +52,9 @@ jobs:
       - name: Ghidra guaranteed export
         continue-on-error: true
         run: bash scripts/run_ghidra_fast.sh "$GHIDRA_DIR" ghidra_project_fast "$PWD/work/libminecraftpe.so" out scripts 1800
+      - name: Rewrite hardcoded paths for runner
+        run: |
+          sed -i "s|/root/workspace/Minecraft, reverse engineer/results|$PWD/out|g" scripts/*.py
       - name: Build all databases (categories, patterns, vtables, IDs, verification)
         run: |
           python3 scripts/build_master_table.py out || true
@@ -73,7 +76,7 @@ jobs:
             gh release create "$RESULT_TAG" --repo "${{ github.repository }}" --title "Full RE results - 1.26.66.1" --notes "All reverse engineering outputs for libminecraftpe.so f5e2118c..." --target main
           for d in elf ghidra ghidra_full reconstruction categories categories_elf separated FINAL2 FINAL3; do
             [ -d "out/$d" ] || continue
-            tar --zstd -T0 -3 -cf "${d}.tar.zst" -C out "$d" || true
+            tar --zstd -cf "${d}.tar.zst" -C out "$d" || true
             gh release upload "$RESULT_TAG" "${d}.tar.zst" --repo "${{ github.repository }}" --clobber || true
           done
           gh release view "$RESULT_TAG" --repo "${{ github.repository }}" --json assets --jq '.assets[].name'
