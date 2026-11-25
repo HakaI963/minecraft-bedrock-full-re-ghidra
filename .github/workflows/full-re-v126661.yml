@@ -1,0 +1,72 @@
+name: Full Reverse Engineering - Minecraft 1.26.66.1
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  reverse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    env:
+      PAYLOAD_TAG: v126661-payload
+      RESULT_TAG: v126661-result
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '21' }
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq binutils zstd file
+          sudo fallocate -l 8G /swapfile-re
+          sudo chmod 600 /swapfile-re
+          sudo mkswap /swapfile-re >/dev/null
+          sudo swapon /swapfile-re
+      - name: Download new library
+        env: GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p payload work out
+          gh release download "$PAYLOAD_TAG" --repo "${{ github.repository }}" --dir payload --clobber
+          cp payload/libminecraftpe.so work/
+          sha256sum work/libminecraftpe.so | tee out/sha256.txt
+      - name: Get Ghidra 11.2.1
+        env: GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download Ghidra_11.2.1_build --repo NationalSecurityAgency/ghidra --pattern 'ghidra_11.2.1_PUBLIC_*.zip' --dir dl --clobber
+          unzip -q dl/ghidra_*.zip -d gh
+          echo "GHIDRA_DIR=$(find "$PWD/gh" -mindepth 1 -maxdepth 1 -type d -name 'ghidra_*' | head -1)" >> "$GITHUB_ENV"
+      - name: ELF fast-track (all offsets, symbols, strings, relocations)
+        run: bash scripts/elf_extract.sh "$PWD/work/libminecraftpe.so" out scripts
+      - name: Ghidra full analysis and export
+        continue-on-error: true
+        run: bash scripts/run_ghidra.sh "$GHIDRA_DIR" ghidra_project "$PWD/work/libminecraftpe.so" out/ghidra_full scripts 12000
+      - name: Ghidra guaranteed export
+        continue-on-error: true
+        run: bash scripts/run_ghidra_fast.sh "$GHIDRA_DIR" ghidra_project_fast "$PWD/work/libminecraftpe.so" out scripts 1800
+      - name: Build all databases (categories, patterns, vtables, IDs, verification)
+        run: |
+          python3 scripts/build_master_table.py out || true
+          python3 scripts/analyze_structures.py out/elf out/reconstruction || true
+          python3 scripts/analyze_ids.py out/elf out/decompiled_all out/reconstruction || true
+          python3 scripts/analyze_names.py out/elf out/decompiled_all out/reconstruction out/reconstruction || true
+          python3 scripts/build_full_db.py || true
+          python3 scripts/build_expanded.py || true
+          python3 scripts/rebuild_all_functions.py || true
+          python3 scripts/generate_patterns_v2.py || true
+          python3 scripts/link_functions.py || true
+          python3 scripts/separate_everything.py || true
+          python3 scripts/categorize_elf.py out/elf out/categories_elf || true
+      - name: Package and publish everything
+        env: GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view "$RESULT_TAG" --repo "${{ github.repository }}" >/dev/null 2>&1 || \
+            gh release create "$RESULT_TAG" --repo "${{ github.repository }}" --title "Full RE results - 1.26.66.1" --notes "All reverse engineering outputs for libminecraftpe.so f5e2118c..." --target main
+          for d in elf ghidra ghidra_full reconstruction categories categories_elf separated FINAL2 FINAL3; do
+            [ -d "out/$d" ] || continue
+            tar --zstd -T0 -3 -cf "${d}.tar.zst" -C out "$d" || true
+            gh release upload "$RESULT_TAG" "${d}.tar.zst" --repo "${{ github.repository }}" --clobber || true
+          done
+          gh release view "$RESULT_TAG" --repo "${{ github.repository }}" --json assets --jq '.assets[].name'
