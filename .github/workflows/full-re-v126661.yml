@@ -30,14 +30,16 @@ jobs:
           sudo mkswap /swapfile-re >/dev/null
           sudo swapon /swapfile-re
       - name: Download new library
-        env: GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p payload work out
           gh release download "$PAYLOAD_TAG" --repo "${{ github.repository }}" --dir payload --clobber
           cp payload/libminecraftpe.so work/
           sha256sum work/libminecraftpe.so | tee out/sha256.txt
       - name: Get Ghidra 11.2.1
-        env: GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release download Ghidra_11.2.1_build --repo NationalSecurityAgency/ghidra --pattern 'ghidra_11.2.1_PUBLIC_*.zip' --dir dl --clobber
           unzip -q dl/ghidra_*.zip -d gh
@@ -64,7 +66,8 @@ jobs:
           python3 scripts/separate_everything.py || true
           python3 scripts/categorize_elf.py out/elf out/categories_elf || true
       - name: Package and publish everything
-        env: GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release view "$RESULT_TAG" --repo "${{ github.repository }}" >/dev/null 2>&1 || \
             gh release create "$RESULT_TAG" --repo "${{ github.repository }}" --title "Full RE results - 1.26.66.1" --notes "All reverse engineering outputs for libminecraftpe.so f5e2118c..." --target main
