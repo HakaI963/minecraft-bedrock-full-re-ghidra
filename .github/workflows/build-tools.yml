@@ -1,0 +1,58 @@
+name: Build query database and tools
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    env:
+      RESULT_TAG: v126661-result
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq zstd sqlite3 binutils
+      - name: Download all RE data
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p out
+          for a in reconstruction elf ghidra integration relationships; do
+            gh release download "$RESULT_TAG" --repo "${{ github.repository }}" --pattern "$a.tar.zst" --dir dl --clobber || true
+          done
+          gh release download "$RESULT_TAG" --repo "${{ github.repository }}" --pattern 'RELATIONSHIP_*.tsv.part*.tsv.zst' --dir dl2 --clobber || true
+          gh release download "$RESULT_TAG" --repo "${{ github.repository }}" --pattern 'RELATIONSHIP_TOP_HUBS.tsv.zst' --dir dl2 --clobber || true
+          ls -lh dl dl2 2>/dev/null | head -40
+      - name: Unpack
+        run: |
+          for f in dl/*.tar.zst; do [ -f "$f" ] || continue; tar --zstd -xf "$f" -C out; done
+          mkdir -p out/relationships
+          for f in dl2/*.zst; do zstd -dq -f "$f" -o "out/relationships/$(basename "$f" .zst)"; done
+          find out -maxdepth 2 -type d | sort
+          find out -maxdepth 2 -type f -printf '%p %s\n' | head -40
+      - name: Build SQLite database
+        run: |
+          python3 scripts/build_sqlite_db.py out
+          ls -lh out/minecraft_re.db
+      - name: Test tools
+        run: |
+          export MC_DB=$PWD/out/minecraft_re.db
+          python3 tools/mcquery.py info
+          python3 tools/mcquery.py name registerBlock | head -20
+          python3 tools/gen_offsets_h.py REGISTER_BLOCK SET_CREATIVE_CATEGORY ADD_SHAPED_RECIPE | head -10
+      - name: Publish database and tools
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd out && zstd -q -6 --rm minecraft_re.db && cd ..
+          ls -lh out/minecraft_re.db.zst
+          gh release upload "$RESULT_TAG" out/minecraft_re.db.zst --repo "${{ github.repository }}" --clobber
+          cd tools && tar --zstd -cf ../mc-tools.tar.zst . && cd ..
+          gh release upload "$RESULT_TAG" mc-tools.tar.zst --repo "${{ github.repository }}" --clobber
+          gh release view "$RESULT_TAG" --repo "${{ github.repository }}" --json assets --jq '.assets[].name' | grep -E 'db|tools'
