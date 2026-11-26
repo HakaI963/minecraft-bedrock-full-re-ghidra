@@ -4,6 +4,10 @@ import sqlite3,os,sys,glob,json,re
 OUT=sys.argv[1] if len(sys.argv)>1 else 'out'
 DB=os.path.join(OUT,'minecraft_re.db')
 if os.path.exists(DB): os.remove(DB)
+def findfile(name):
+    for root,dirs,files in os.walk(OUT):
+        if name in files: return os.path.join(root,name)
+    return None
 con=sqlite3.connect(DB); cur=con.cursor()
 cur.executescript('''
 PRAGMA journal_mode=OFF; PRAGMA synchronous=OFF;
@@ -24,9 +28,9 @@ meta('game_version','1.26.66.1')
 meta('lib_sha256','f5e2118cae3e2583424650d5fe0b937fa055df171cc87091019c654834dc338d')
 meta('generated_by','HakaI963/minecraft-bedrock-full-re-ghidra GitHub Actions')
 # ---- functions from master table ----
-p=os.path.join(OUT,'reconstruction','MASTER_OFFSET_SIGNATURE_TABLE.tsv')
+p=findfile('MASTER_OFFSET_SIGNATURE_TABLE.tsv')
 rows=0
-if os.path.exists(p):
+if p and os.path.exists(p):
     for line in open(p,errors='replace'):
         q=line.rstrip('\n').split('\t')
         if len(q)<6 or not q[0].startswith('0x'): continue
@@ -38,8 +42,8 @@ if os.path.exists(p):
         rows+=1
 print('functions',rows)
 # ---- masked patterns ----
-p=os.path.join(OUT,'reconstruction','FUNCTION_SIGNATURES_MASKED.tsv')
-if os.path.exists(p):
+p=findfile('FUNCTION_SIGNATURES_MASKED.tsv')
+if p and os.path.exists(p):
     for line in open(p,errors='replace'):
         q=line.rstrip('\n').split('\t')
         if len(q)<4 or not q[0].startswith('0x'): continue
@@ -48,8 +52,8 @@ if os.path.exists(p):
         cur.execute('UPDATE functions SET pattern=? WHERE addr=?',(q[2],a))
 print('patterns merged')
 # ---- symbols ----
-p=os.path.join(OUT,'reconstruction','ALL_SYMBOLS_DEMANGLED.tsv')
-if os.path.exists(p):
+p=findfile('ALL_SYMBOLS_DEMANGLED.tsv')
+if p and os.path.exists(p):
     n=0
     for line in open(p,errors='replace'):
         q=line.rstrip('\n').split('\t')
@@ -61,8 +65,8 @@ if os.path.exists(p):
         if n%50000==0: con.commit()
     print('symbols',n)
 # ---- vtables ----
-p=os.path.join(OUT,'reconstruction','vtables.tsv')
-if os.path.exists(p):
+p=findfile('vtables.tsv')
+if p and os.path.exists(p):
     n=0
     for line in open(p,errors='replace'):
         q=line.rstrip('\n').split('\t')
@@ -76,8 +80,8 @@ if os.path.exists(p):
         if n%50000==0: con.commit()
     print('vtables',n)
 # ---- ids ----
-p=os.path.join(OUT,'reconstruction','minecraft_ids.tsv')
-if os.path.exists(p):
+p=findfile('minecraft_ids.tsv')
+if p and os.path.exists(p):
     n=0
     for line in open(p,errors='replace'):
         q=line.rstrip('\n').split('\t')
@@ -86,8 +90,8 @@ if os.path.exists(p):
         n+=1
     print('ids',n)
 # ---- strings ----
-p=os.path.join(OUT,'elf','strings_mapped.tsv')
-if os.path.exists(p):
+p=findfile('strings_mapped.tsv')
+if p and os.path.exists(p):
     n=0; batch=[]
     for line in open(p,errors='replace'):
         q=line.rstrip('\n').split('\t')
@@ -125,8 +129,8 @@ for f in sorted(glob.glob(os.path.join(OUT,'relationships','RELATIONSHIP_STRINGS
     con.commit(); print('strxref from',os.path.basename(f),n)
 # ---- block props / features ----
 for tbl,fn in [('blocks_props','BLOCK_PROPERTIES.tsv'),('features','CUSTOM_CONTENT_FEATURES.tsv')]:
-    p=os.path.join(OUT,'integration',fn)
-    if os.path.exists(p):
+    p=findfile(fn)
+    if p and os.path.exists(p):
         n=0
         for line in open(p,errors='replace'):
             q=line.rstrip('\n').split('\t')
