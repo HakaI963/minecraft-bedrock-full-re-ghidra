@@ -29,11 +29,12 @@ jobs:
           sha256sum work/libminecraftpe.so
       - name: Migrate signatures and offsets
         run: |
-          python3 scripts/migrate_mod_offsets.py work/libminecraftpe.so modsrc/src/FinalMod.cpp out/migration
-          cat out/migration/MIGRATION_REPORT.md
+          python3 scripts/migrate_mod_offsets.py work/libminecraftpe.so modsrc/src/FinalMod.cpp out/migration || true
+          python3 scripts/migrate_v2.py work/libminecraftpe.so modsrc/src/FinalMod.cpp out/migration2
+          cat out/migration2/MIGRATION_V2.md
       - name: Publish migration report
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          tar --zstd -cf migration.tar.zst -C out migration
+          tar --zstd -cf migration.tar.zst -C out migration migration2
           gh release upload "$RESULT_TAG" migration.tar.zst --repo "${{ github.repository }}" --clobber
