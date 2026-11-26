@@ -1,0 +1,46 @@
+name: Relationship & Structure Analysis - 1.26.66.1
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    env:
+      PAYLOAD_TAG: v126661-payload
+      RESULT_TAG: v126661-result
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq binutils zstd
+      - name: Download library
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p work out
+          gh release download "$PAYLOAD_TAG" --repo "${{ github.repository }}" --dir work --clobber
+          sha256sum work/libminecraftpe.so | tee out/sha256.txt
+      - name: Full disassembly (objdump forced aarch64)
+        run: |
+          objdump -d -b elf64-littleaarch64 -m aarch64 --no-show-raw-insn work/libminecraftpe.so \
+            | zstd -q -T4 -3 -o out/DISASSEMBLY_FULL.asm.zst
+          echo "disasm lines: $(zstd -dc out/DISASSEMBLY_FULL.asm.zst | wc -l)"
+      - name: Extract call graph + xrefs + class layouts
+        run: |
+          python3 scripts/extract_relationships.py work/libminecraftpe.so out
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tar --zstd -cf relationships.tar.zst -C out relationships
+          tar --zstd -cf disassembly-full.tar.zst -C out DISASSEMBLY_FULL.asm.zst
+          gh release upload "$RESULT_TAG" relationships.tar.zst --repo "${{ github.repository }}" --clobber || true
+          gh release upload "$RESULT_TAG" disassembly-full.tar.zst --repo "${{ github.repository }}" --clobber || true
