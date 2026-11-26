@@ -25,7 +25,7 @@ jobs:
           echo DOWNLOAD_OK
       - name: Full disassembly
         run: |
-          objdump -d -b elf64-littleaarch64 -m aarch64 --no-show-raw-insn work/libminecraftpe.so | zstd -q -T4 -3 -o out/DISASSEMBLY_FULL.asm.zst
+          objdump -d --no-show-raw-insn work/libminecraftpe.so | zstd -q -T4 -3 -o out/DISASSEMBLY_FULL.asm.zst
           echo "lines: $(zstd -dc out/DISASSEMBLY_FULL.asm.zst | wc -l)"
       - name: Extract relationships
         run: |
