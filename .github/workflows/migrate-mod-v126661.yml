@@ -1,0 +1,39 @@
+name: Migrate BlueCube mod to 1.26.66.1
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    env:
+      PAYLOAD_TAG: v126661-payload
+      RESULT_TAG: v126661-result
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq binutils zstd unzip zip
+          sudo fallocate -l 8G /swapfile-re && sudo chmod 600 /swapfile-re && sudo mkswap /swapfile-re >/dev/null && sudo swapon /swapfile-re
+      - name: Download new library
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p work out
+          gh release download "$PAYLOAD_TAG" --repo "${{ github.repository }}" --dir work --clobber
+          sha256sum work/libminecraftpe.so
+      - name: Migrate signatures and offsets
+        run: |
+          python3 scripts/migrate_mod_offsets.py work/libminecraftpe.so modsrc/src/FinalMod.cpp out/migration
+          cat out/migration/MIGRATION_REPORT.md
+      - name: Publish migration report
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tar --zstd -cf migration.tar.zst -C out migration
+          gh release upload "$RESULT_TAG" migration.tar.zst --repo "${{ github.repository }}" --clobber

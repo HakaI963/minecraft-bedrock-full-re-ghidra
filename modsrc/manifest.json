@@ -1,0 +1,10 @@
+{
+  "type": "preload-native",
+  "name": "BlueCube",
+  "author": "OpenCode",
+  "version": "1.0.0",
+  "entry": "libfinal_mod.so",
+  "minecraft_versions": ["1.26.*", "1.26.6*"],
+  "overwrite_files": [],
+  "overwrite_folders": []
+}
