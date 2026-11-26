@@ -1,7 +1,9 @@
-name: Relationship & Structure Analysis - 1.26.66.1
+name: Relationship Analysis - 1.26.66.1
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ main ]
 
 permissions:
   contents: write
@@ -15,6 +17,10 @@ jobs:
       RESULT_TAG: v126661-result
     steps:
       - uses: actions/checkout@v4
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq binutils zstd
       - name: Download library
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -22,18 +28,22 @@ jobs:
           mkdir -p work out
           gh release download "$PAYLOAD_TAG" --repo "${{ github.repository }}" --dir work --clobber
           sha256sum work/libminecraftpe.so | tee out/sha256.txt
-          echo DOWNLOAD_OK
-      - name: Full disassembly
+      - name: Get master table for name resolution
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          objdump -d --no-show-raw-insn work/libminecraftpe.so | zstd -q -T4 -3 -o out/DISASSEMBLY_FULL.asm.zst
-          echo "lines: $(zstd -dc out/DISASSEMBLY_FULL.asm.zst | wc -l)"
-      - name: Extract relationships
+          gh release download "$RESULT_TAG" --repo "${{ github.repository }}" --pattern 'reconstruction.tar.zst' --dir rec --clobber || true
+          if [ -f rec/reconstruction.tar.zst ]; then tar --zstd -xf rec/reconstruction.tar.zst -C rec; find rec -name 'MASTER_OFFSET_SIGNATURE_TABLE.tsv' | head -1 > /tmp/m.txt; cat /tmp/m.txt; fi
+          MASTER=$(cat /tmp/m.txt 2>/dev/null | head -1)
+          echo "MASTER_FILE=$MASTER" >> "$GITHUB_ENV"
+      - name: Extract relationships (pure python, no disassembler)
         run: |
-          python3 scripts/extract_relationships.py work/libminecraftpe.so out
+          python3 scripts/build_relationship_pkg.py work/libminecraftpe.so out "$MASTER_FILE"
           ls -lh out/relationships
       - name: Publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          tar --zstd -cf relationships.tar.zst -C out relationships
+          tar --zstd -T0 -6 -cf relationships.tar.zst -C out relationships
+          ls -lh relationships.tar.zst
           gh release upload "$RESULT_TAG" relationships.tar.zst --repo "${{ github.repository }}" --clobber
