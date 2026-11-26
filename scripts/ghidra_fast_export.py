@@ -121,6 +121,23 @@ try:
     else:
         done=0; chunks=[]
 
+    # call graph / xrefs
+    try:
+        with open(os.path.join(OUT,'CALL_GRAPH_XREFS.tsv'),'w') as xf:
+            xf.write('caller_address\tcallee_address\treference_type\tcaller_name\tcallee_name\n')
+            for fn in flist[:60000]:
+                fa=fn.getEntryPoint()
+                refs=fn.getSymbol().getReferences() if fn.getSymbol() else []
+                for ref in refs:
+                    try:
+                        to=ref.getToAddress()
+                        if to and to.getOffset() and int(to.getOffset())!=int(fa.getOffset()):
+                            xf.write('0x%x\t0x%x\t%s\t%s\t%s\n'%(int(fa.getOffset()),int(to.getOffset()),
+                                ref.getReferenceType(),st(fn.getName()),st(to.toString())))
+                    except Exception: pass
+        print('[fast] call graph exported')
+    except Exception:
+        print('[fast] call graph export failed')
     json.dump({'created_functions':created,'functions':len(flist),'decompiled':done,
                'chunks':len(chunks),'seconds':time.time()-START},
               open(os.path.join(OUT,'EXPORT_SUMMARY.json'),'w'), indent=2)
