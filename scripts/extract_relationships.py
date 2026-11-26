@@ -8,10 +8,10 @@ data=open(LIB,'rb').read()
 funcs={}
 # parse symbols from nm -D
 import subprocess
-p=subprocess.run(['nm','-D','--defined-only',LIB],capture_output=True,text=True).stdout
-for line in p.splitlines():
- m=re.match(r'([0-9a-fA-F]+)\s+(\w)\s+(.+)',line)
- if m: funcs[int(m.group(1),16)]=(m.group(2),m.group(3))
+out=subprocess.run(['readelf','-sW',LIB],capture_output=True,text=True).stdout
+for line in out.splitlines():
+ m=re.match(r'\s*\d+:\s+([0-9a-fA-F]+)\s+(\d+)\s+FUNC\s+\w+\s+\w+\s+\S+\s+(.+)',line)
+ if m: funcs[int(m.group(1),16)]=('FUNC',m.group(3))
 print('dynsym functions',len(funcs))
 # full disassembly stream
 zc=os.path.join(OUT,'DISASSEMBLY_FULL.asm.zst')
@@ -75,6 +75,6 @@ with open(REL+'/VTABLE_LAYOUTS.tsv','w') as f:
  out=subprocess.run(['readelf','-rW',LIB],capture_output=True,text=True).stdout
  for line in out.splitlines():
   m=re.match(r'([0-9a-fA-F]{16})\s+\S+\s+R_AARCH64_ABS64\s+([0-9a-fA-F]+)\s+(\S+)',line)
-  if m:
+  if m and int(m.group(1),16)>=0x13680000:
    f.write('0x%s\t0\t0x%s\t%s\n'%(m.group(1),m.group(2),m.group(3)))
 print('done')
