@@ -28,12 +28,19 @@ jobs:
           done
           gh release download "$RESULT_TAG" --repo "${{ github.repository }}" --pattern 'RELATIONSHIP_*.tsv.part*.tsv.zst' --dir dl2 --clobber || true
           gh release download "$RESULT_TAG" --repo "${{ github.repository }}" --pattern 'RELATIONSHIP_TOP_HUBS.tsv.zst' --dir dl2 --clobber || true
+          mkdir -p dl3
+          for p in MASTER_OFFSET_SIGNATURE_TABLE.tsv.zst FUNCTION_SIGNATURES_MASKED.tsv.zst ALL_FUNCTION_ENTRIES.txt.zst ALL_FUNCTION_PATTERNS_V2.tsv.zst BLOCK_PROPERTIES.tsv.zst CUSTOM_CONTENT_FEATURES.tsv.zst STRINGS_UI.tsv.zst 04_functions.tsv.zst; do
+            gh release download "$RESULT_TAG" --repo "${{ github.repository }}" --pattern "$p" --dir dl3 --clobber || true
+          done
           ls -lh dl dl2 2>/dev/null | head -40
       - name: Unpack
         run: |
           for f in dl/*.tar.zst; do [ -f "$f" ] || continue; tar --zstd -xf "$f" -C out; done
           mkdir -p out/relationships
           for f in dl2/*.zst; do zstd -dq -f "$f" -o "out/relationships/$(basename "$f" .zst)"; done
+          mkdir -p out/reconstruction out/integration out/ghidra
+          for f in dl3/*.zst; do b=$(basename "$f" .zst); case "$b" in BLOCK_PROPERTIES*|CUSTOM_CONTENT*|STRINGS_UI*) d=out/integration;; 04_functions*) d=out/ghidra;; *) d=out/reconstruction;; esac; zstd -dq -f "$f" -o "$d/$b"; done
+          ls -lh out/reconstruction out/integration out/ghidra
           find out -maxdepth 2 -type d | sort
           find out -maxdepth 2 -type f -printf '%p %s\n' | head -40
       - name: Build SQLite database
