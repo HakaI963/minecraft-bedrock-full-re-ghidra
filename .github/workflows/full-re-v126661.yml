@@ -2,8 +2,6 @@ name: Full Reverse Engineering - Minecraft 1.26.66.1
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ main ]
 
 permissions:
   contents: write
